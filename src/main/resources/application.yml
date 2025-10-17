@@ -1,0 +1,56 @@
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+
+spring:
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+      file-size-threshold: 2MB
+  application:
+    name: '@project.artifactId@'
+  datasource:
+    url: jdbc:postgresql://localhost:5432/tablebuilder?reWriteBatchedInserts=true&useUnicode=true&characterEncoding=UTF-8
+    username: tableowner
+    password: postgres
+    hikari:
+      driver-class-name: org.postgresql.Driver
+      maximum-pool-size: 50
+
+  jpa:
+    show-sql: true
+    generate-ddl: true
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+          fetch_size: 50
+        order_inserts: true       # оптимизация INSERT
+        order_updates: true       # оптимизация UPDATE
+        batch_versioned_data: true
+        connection:
+          driver_class: org.postgresql.Driver
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  web:
+    resources:
+      static-locations: classpath:/static/, classpath:/public/
+
+springdoc:
+  swagger-ui:
+    disable-swagger-default-url: true
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    doc-expansion: list
+
