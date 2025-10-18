@@ -12,9 +12,11 @@ import org.tablebuilder.demo.store.TableListRepository;
 import org.tablebuilder.demo.store.UploadedTable;
 import org.tablebuilder.demo.store.UploadedTableRepository;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-
+@CrossOrigin(origins = "http://localhost:5173", allowCredentials = "true")
 @RestController
 @RequestMapping("/api/tables/data")
 @RequiredArgsConstructor
@@ -31,9 +33,13 @@ public class TableDataCrudController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = true) String sheetName) {
+        String decodedFileName = URLDecoder.decode(fileName, StandardCharsets.UTF_8);
+        String decodedSheetName = sheetName != null
+                ? URLDecoder.decode(sheetName, StandardCharsets.UTF_8)
+                : null;
         try {
             PageableResponse<Map<String, Object>> result = tableDataService.getAllRows(
-                    fileName, sheetName, page, size);
+                    decodedFileName, decodedSheetName, page, size);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
@@ -47,8 +53,13 @@ public class TableDataCrudController {
             @PathVariable Long id,
             @RequestParam String sheetName) {
         try {
-            UploadedTable table = uploadedTableRepository.findByDisplayName(fileName);
-            TableList list_name = tableListRepository.findByTableIdAndOriginalListName(table.getId(), sheetName);
+            // Декодируем имя файла и листа из URL-encoding
+            String decodedFileName = URLDecoder.decode(fileName, StandardCharsets.UTF_8);
+            String decodedSheetName = sheetName != null
+                    ? URLDecoder.decode(sheetName, StandardCharsets.UTF_8)
+                    : null;
+            UploadedTable table = uploadedTableRepository.findByDisplayName(decodedFileName);
+            TableList list_name = tableListRepository.findByTableIdAndOriginalListName(table.getId(), decodedSheetName);
 
 
             Map<String, Object> row = tableDataService.getRowById(list_name.getListName(), id);
@@ -65,7 +76,12 @@ public class TableDataCrudController {
             @RequestParam(required = false) String sheetName,
             @RequestBody Map<String, Object> cell) {
         try {
-            Map<String, Object> createdRow = tableDataService.createRow(fileName, sheetName, cell);
+            // Декодируем имя файла и листа из URL-encoding
+            String decodedFileName = URLDecoder.decode(fileName, StandardCharsets.UTF_8);
+            String decodedSheetName = sheetName != null
+                    ? URLDecoder.decode(sheetName, StandardCharsets.UTF_8)
+                    : null;
+            Map<String, Object> createdRow = tableDataService.createRow(decodedFileName, decodedSheetName, cell);
             return ResponseEntity.ok(createdRow);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
@@ -81,8 +97,11 @@ public class TableDataCrudController {
             @RequestBody CellData cell) {
         try {
 
-
-            Map<String, Object> updatedRow = tableDataService.updateRow(fileName, sheetName, id, cell);
+            String decodedFileName = URLDecoder.decode(fileName, StandardCharsets.UTF_8);
+            String decodedSheetName = sheetName != null
+                    ? URLDecoder.decode(sheetName, StandardCharsets.UTF_8)
+                    : null;
+            Map<String, Object> updatedRow = tableDataService.updateRow(decodedFileName, decodedSheetName, id, cell);
             return ResponseEntity.ok(updatedRow);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
@@ -97,7 +116,11 @@ public class TableDataCrudController {
             @PathVariable Long id,
             @RequestParam(required = false) String sheetName) {
         try {
-            tableDataService.deleteRow(fileName, sheetName, id);
+            String decodedFileName = URLDecoder.decode(fileName, StandardCharsets.UTF_8);
+            String decodedSheetName = sheetName != null
+                    ? URLDecoder.decode(sheetName, StandardCharsets.UTF_8)
+                    : null;
+            tableDataService.deleteRow(decodedFileName, decodedSheetName, id);
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             return ResponseEntity.notFound().build();
@@ -113,8 +136,12 @@ public class TableDataCrudController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
         try {
+            String decodedFileName = URLDecoder.decode(fileName, StandardCharsets.UTF_8);
+            String decodedSheetName = sheetName != null
+                    ? URLDecoder.decode(sheetName, StandardCharsets.UTF_8)
+                    : null;
             PageableResponse<Map<String, Object>> result = tableDataService.searchRows(
-                    fileName, sheetName, searchRequest, page, size);
+                    decodedFileName, decodedSheetName, searchRequest, page, size);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
@@ -143,8 +170,12 @@ public class TableDataCrudController {
             @RequestParam(required = false) String sheetName,
             @RequestBody List<Long> ids) {
         try {
+            String decodedFileName = URLDecoder.decode(fileName, StandardCharsets.UTF_8);
+            String decodedSheetName = sheetName != null
+                    ? URLDecoder.decode(sheetName, StandardCharsets.UTF_8)
+                    : null;
             BatchOperationResult result = tableDataService.deleteBatchRows(
-                    fileName, sheetName, ids);
+                    decodedFileName, decodedSheetName, ids);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();

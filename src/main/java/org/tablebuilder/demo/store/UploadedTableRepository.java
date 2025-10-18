@@ -14,4 +14,6 @@ public interface UploadedTableRepository extends JpaRepository<UploadedTable, Lo
     List<UploadedTable> findByDisplayNameStartingWith(String prefix);
 
     UploadedTable findByDisplayName(String displayName);
+
+    List<UploadedTable> findAllByOrderByCreatedAtDesc();
 }
