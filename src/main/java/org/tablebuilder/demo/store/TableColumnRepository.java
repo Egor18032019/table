@@ -20,4 +20,6 @@ public interface TableColumnRepository extends JpaRepository<TableColumn, Long> 
     void deleteByTableIdAndListName(Long id, String listName);
 
     void deleteByTableId(Long id);
+
+    TableColumn findByDisplayName(String columnName);
 }

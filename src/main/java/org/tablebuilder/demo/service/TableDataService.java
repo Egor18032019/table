@@ -91,8 +91,9 @@ public class TableDataService {
         // Заполняем значениями из запроса
         for (Map.Entry<String, Object> entry : cellData.entrySet()) {
             String columnName = entry.getKey();
-            String safeColumnName = columnName;
 
+            TableColumn foo = tableColumnRepository.findByDisplayName(columnName);
+            String safeColumnName = foo.getInternalName();
             // Проверяем что колонка существует в таблице
             if (!allColumns.contains(safeColumnName)) {
                 throw new RuntimeException("Column '" + columnName + "' not found in table. Available columns: " + allColumns);
@@ -128,7 +129,7 @@ public class TableDataService {
         Long generatedId = getLastInsertId(tableName);
 
         // Возвращаем созданную строку
-        return getRowById(tableName,   generatedId);
+        return getRowById(tableName, generatedId);
     }
 
     /**
@@ -535,6 +536,7 @@ public class TableDataService {
             return value; // возвращаем оригинальное значение при ошибке
         }
     }
+
     /**
      * Автоматическое преобразование значения по его типу
      */
