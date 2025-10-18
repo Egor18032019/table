@@ -6,6 +6,6 @@ import java.util.List;
 
 @Data
 public class TableTemplateDTO {
-    private String name;
-    private List<ColumnDefinitionDTO> columns;
+    private String tableName;
+    private List<ListDTO> columns;
 }

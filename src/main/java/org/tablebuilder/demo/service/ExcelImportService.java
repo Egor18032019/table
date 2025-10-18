@@ -109,7 +109,7 @@ public class ExcelImportService {
 
                     System.out.println("Columns found: " + columnNames.size());
 
-                    // === ИСПРАВЛЕННЫЙ СБОР SAMPLE DATA ===
+                    // === СБОР SAMPLE DATA ===
                     List<Map<String, Object>> sampleData = new ArrayList<>();
                     int sampleSize = Math.min(20, sheet.getLastRowNum()); // Берем больше строк для анализа
 

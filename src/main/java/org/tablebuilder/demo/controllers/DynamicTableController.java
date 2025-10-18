@@ -27,8 +27,8 @@ public class DynamicTableController {
     @PostMapping("/create")
     public ResponseEntity<?> createTable(@RequestBody TableTemplateDTO template) {
         try {
-            dynamicTableService.createTableFromTemplate(template);
-            return ResponseEntity.ok().body("Table '" + template.getName() + "' created successfully.");
+            dynamicTableService.ensureTableExists(template);
+            return ResponseEntity.ok().body("Table '" + template.getTableName() + "' created successfully.");
         } catch (InvalidNameException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         } catch (Exception e) {

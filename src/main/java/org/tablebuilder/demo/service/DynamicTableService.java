@@ -1,12 +1,15 @@
 package org.tablebuilder.demo.service;
 
 import org.tablebuilder.demo.model.ColumnDefinitionDTO;
+import org.tablebuilder.demo.model.ListDTO;
 import org.tablebuilder.demo.model.TableTemplateDTO;
+import org.tablebuilder.demo.store.UploadedTable;
 import org.tablebuilder.demo.utils.ColumnType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.tablebuilder.demo.utils.NameUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -15,47 +18,12 @@ import static org.tablebuilder.demo.utils.NameUtils.sanitizeName;
 
 @Service
 public class DynamicTableService {
+    @Autowired
+    private MetadataService metadataService;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    /**
-     * Создание таблицы по шаблону
-     */
-    @Transactional
-    public void createTableFromTemplate(TableTemplateDTO template) {
-        String tableName = sanitizeName(template.getName());
-
-        StringBuilder sql = new StringBuilder("CREATE TABLE IF NOT EXISTS ");
-        sql.append(tableName).append(" (id BIGSERIAL PRIMARY KEY");
-
-        for (ColumnDefinitionDTO col : template.getColumns()) {
-            String colName = sanitizeName(col.getName());
-            sql.append(", ").append(colName).append(" ");
-
-            switch (col.getType().toUpperCase()) {
-                case "STRING" -> sql.append("TEXT");
-                case "NUMBER" -> sql.append("NUMERIC");
-                case "DATE" -> sql.append("DATE");
-                case "BOOLEAN" -> sql.append("BOOLEAN");
-                case "ENUM" -> sql.append("TEXT");
-                default -> sql.append("TEXT");
-            }
-
-            if (col.isRequired()) {
-                sql.append(" NOT NULL");
-            }
-
-            if (col.isUnique()) {
-                sql.append(" UNIQUE");
-            }
-        }
-
-        sql.append(");");
-
-        System.out.println("[SQL] " + sql);
-        jdbcTemplate.execute(sql.toString());
-    }
 
     /**
      * Создание таблицы если ее нет
@@ -325,4 +293,178 @@ public class DynamicTableService {
     public List<Map<String, Object>> getAllRows(String tableName) {
         return jdbcTemplate.queryForList("SELECT * FROM " + tableName);
     }
+
+    public void ensureTableExists(TableTemplateDTO template) {
+        String baseFileName = template.getTableName();
+        String originalFilename = baseFileName + ".xlsx";
+        String internalTableName = sanitizeName(baseFileName);
+
+        if (internalTableName.isEmpty()) {
+            internalTableName = "table_" + System.currentTimeMillis();
+        }
+
+        // Сохраняем метаданные таблицы
+        UploadedTable savedTable = metadataService.saveUploadedTable(originalFilename, internalTableName, "frontend");
+
+        // Обрабатываем каждый лист из template
+        for (ListDTO listDTO : template.getColumns()) {
+            String sheetName = listDTO.getNameList();
+            String tableName = sanitizeName(internalTableName + "__" + sheetName);
+
+            if (tableName.isEmpty()) {
+                tableName = "table_" + System.currentTimeMillis() + "_" + sheetName;
+            }
+
+            System.out.println("Creating table: " + tableName);
+
+            // Сохраняем метаданные листа
+            metadataService.saveTableList(savedTable, tableName, sheetName);
+
+            // Проверяем, существует ли таблица
+            Boolean exists = jdbcTemplate.queryForObject(
+                    "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = ?)",
+                    Boolean.class,
+                    tableName
+            );
+
+            if (Boolean.FALSE.equals(exists)) {
+                createTableFromListDTO(tableName, listDTO);
+                // Сохраняем метаданные колонок
+                saveColumnsMetadata(savedTable, listDTO, tableName);
+            } else {
+                System.out.println("[INFO] Table already exists: " + tableName);
+            }
+        }
+    }
+
+    /**
+     * Создание таблицы для конкретного листа
+     */
+    private void createTableFromListDTO(String tableName, ListDTO listDTO) {
+        StringBuilder sql = new StringBuilder("CREATE TABLE ");
+        sql.append(tableName).append(" (id BIGSERIAL PRIMARY KEY");
+
+        // Валидация имен колонок
+        validateColumnNamesColumnDefinitionDTO(listDTO.getColumns());
+
+        for (ColumnDefinitionDTO col : listDTO.getColumns()) {
+            String safeColName = sanitizeName(col.getName());
+            sql.append(", ").append(safeColName).append(" ");
+
+            ColumnType type = detectColumnType(col.getType());
+            System.out.println("Creating column: " + safeColName + " as " + type);
+
+            switch (type) {
+                case NUMBER -> sql.append("NUMERIC");
+                case DATE -> sql.append("DATE");
+                case BOOLEAN -> sql.append("BOOLEAN");
+                default -> {
+                    System.out.println("Using TEXT for column: " + safeColName);
+                    sql.append("TEXT");
+                }
+            }
+
+            // Добавляем ограничения если указаны
+            if (col.isRequired()) {
+                sql.append(" NOT NULL");
+            }
+            if (col.isUnique()) {
+                sql.append(" UNIQUE");
+            }
+        }
+
+        sql.append(");");
+
+        System.out.println("Final SQL: " + sql);
+
+        try {
+            jdbcTemplate.execute(sql.toString());
+            System.out.println("Table created successfully: " + tableName);
+        } catch (Exception e) {
+            System.err.println("Failed to create table: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    /**
+     * Сохранение метаданных колонок
+     */
+    private void saveColumnsMetadata(UploadedTable savedTable, ListDTO listDTO, String tableName) {
+        List<String> originalColumnNames = new ArrayList<>();
+        List<String> internalColumnNames = new ArrayList<>();
+
+        for (ColumnDefinitionDTO col : listDTO.getColumns()) {
+            originalColumnNames.add(col.getName());
+            internalColumnNames.add(sanitizeName(col.getName()));
+        }
+
+        metadataService.saveTableMetadata(
+                savedTable,
+                originalColumnNames,
+                internalColumnNames,
+                tableName
+        );
+    }
+
+    /**
+     * Валидация имен колонок
+     */
+    private void validateColumnNamesColumnDefinitionDTO(List<ColumnDefinitionDTO> columns) {
+        java.util.Set<String> uniqueNames = new java.util.HashSet<>();
+        List<String> duplicates = new ArrayList<>();
+
+        for (ColumnDefinitionDTO col : columns) {
+            String colName = sanitizeName(col.getName());
+            if (!uniqueNames.add(colName)) {
+                duplicates.add(col.getName());
+            }
+        }
+
+        if (!duplicates.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Duplicate column names found: " + duplicates +
+                            ". Please ensure all column names are unique."
+            );
+        }
+    }
+
+    /**
+     * Определение типа колонки из строки
+     */
+    public ColumnType detectColumnType(String type) {
+        if (type == null || type.trim().isEmpty()) {
+            return ColumnType.TEXT;
+        }
+
+        switch (type.toUpperCase()) {
+            case "STRING":
+                return ColumnType.TEXT;
+            case "NUMBER":
+            case "NUMERIC":
+            case "INTEGER":
+            case "FLOAT":
+            case "DOUBLE":
+                return ColumnType.NUMBER;
+            case "DATE":
+            case "DATETIME":
+            case "TIMESTAMP":
+                return ColumnType.DATE;
+            case "BOOLEAN":
+            case "BOOL":
+                return ColumnType.BOOLEAN;
+            default:
+                return ColumnType.TEXT;
+        }
+    }
 }
+
+/*
+        switch (col.getType().toUpperCase()) {
+                case "STRING" -> sql.append("TEXT");
+                case "NUMBER" -> sql.append("NUMERIC");
+                case "DATE" -> sql.append("DATE");
+                case "BOOLEAN" -> sql.append("BOOLEAN");
+                case "ENUM" -> sql.append("TEXT");
+                default -> sql.append("TEXT");
+            }
+ */
