@@ -1,7 +1,8 @@
 package org.tablebuilder.demo.service;
 
+import jakarta.transaction.Transactional;
 import org.tablebuilder.demo.model.ExcelImportResult;
-import org.tablebuilder.demo.store.UploadedTable;
+import org.tablebuilder.demo.store.*;
 import org.tablebuilder.demo.utils.ColumnType;
 import org.tablebuilder.demo.utils.NameUtils;
 import org.apache.poi.ss.usermodel.*;
@@ -20,15 +21,21 @@ public class ExcelImportService {
 
     @Autowired
     private DynamicTableService dynamicTableService;
-
+    @Autowired
+    private UploadedTableRepository uploadedTableRepository;
     @Autowired
     private MetadataService metadataService;
+    @Autowired
+    private TableListRepository tableListRepository;
+    @Autowired
+    private TableColumnRepository tableColumnRepository;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
     @Autowired
     private BatchInsertService batchInsertService;
 
+    @Transactional
     public ExcelImportResult importExcel(MultipartFile file, String username) {
         try {
             String originalFilename = file.getOriginalFilename();
@@ -47,10 +54,26 @@ public class ExcelImportService {
                 internalTableName = "table_" + System.currentTimeMillis();
             }
 
+            // Проверяем, существует ли уже такой файл
+            UploadedTable existingTable = uploadedTableRepository.findByDisplayName(originalFilename);
+            UploadedTable savedTable;
+
+            if (existingTable != null) {
+                System.out.println("File already exists, deleting old data: " + originalFilename);
+                // Удаляем старые данные
+                deleteExistingTableData(existingTable);
+                // Обновляем метаданные
+                existingTable.setInternalName(internalTableName);
+                existingTable.setUsername(username);
+                savedTable = uploadedTableRepository.save(existingTable);
+            } else {
+                // Создаем новую таблицу
+                savedTable = metadataService.saveUploadedTable(originalFilename, internalTableName, username);
+            }
+
             try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
                 int totalRowsImported = 0;
                 List<String> processedTables = new ArrayList<>();
-                UploadedTable savedTable = metadataService.saveUploadedTable(originalFilename, internalTableName, username);
 
                 // Проходим по всем листам
                 for (int sheetIndex = 0; sheetIndex < workbook.getNumberOfSheets(); sheetIndex++) {
@@ -75,6 +98,20 @@ public class ExcelImportService {
                     }
 
                     System.out.println("Creating table: " + tableName);
+
+                    // Удаляем старый лист если существует
+                    TableList existingList = tableListRepository.findByTableIdAndOriginalListName(savedTable.getId(), sheetName);
+                    if (existingList != null) {
+                        System.out.println("Deleting old sheet data: " + sheetName);
+                        // Удаляем старую таблицу из БД
+                        dropTableIfExists(existingList.getListName());
+                        // Удаляем метаданные колонок
+                        tableColumnRepository.deleteByTableIdAndListName(savedTable.getId(), existingList.getListName());
+                        // Удаляем метаданные листа
+                        tableListRepository.delete(existingList);
+                    }
+
+                    // Сохраняем метаданные листа
                     metadataService.saveTableList(savedTable, tableName, sheetName);
 
                     // Определяем количество столбцов по первой строке (заголовкам)
@@ -111,13 +148,13 @@ public class ExcelImportService {
 
                     // === СБОР SAMPLE DATA ===
                     List<Map<String, Object>> sampleData = new ArrayList<>();
-                    int sampleSize = Math.min(20, sheet.getLastRowNum()); // Берем больше строк для анализа
+                    int sampleSize = Math.min(20, sheet.getLastRowNum());
 
                     // Собираем данные НАЧИНАЯ С ПЕРВОЙ СТРОКИ ДАННЫХ (не заголовка)
                     for (int r = 1; r <= Math.min(sampleSize + 1, sheet.getLastRowNum()); r++) {
                         Row row = sheet.getRow(r);
                         if (row == null || isEmptyRow(row)) {
-                            continue; // Пропускаем полностью пустые строки
+                            continue;
                         }
 
                         Map<String, Object> rowData = new HashMap<>();
@@ -133,7 +170,6 @@ public class ExcelImportService {
                             rowData.put(columnNames.get(c), cellValue);
                         }
 
-                        // Добавляем только строки, которые содержат данные
                         if (hasData) {
                             sampleData.add(rowData);
                         }
@@ -142,7 +178,6 @@ public class ExcelImportService {
                     // Если нет данных для анализа, используем TEXT по умолчанию
                     if (sampleData.isEmpty()) {
                         System.out.println("No sample data found, using TEXT for all columns");
-                        // Создаем фиктивные данные для определения типов
                         for (int r = 1; r <= Math.min(5, sheet.getLastRowNum()); r++) {
                             Row row = sheet.getRow(r);
                             if (row == null) continue;
@@ -164,32 +199,28 @@ public class ExcelImportService {
 
                     // Вставляем данные (начиная со второй строки - данные)
                     int rowsImported = 0;
-
                     List<Map<String, Object>> allRows = new ArrayList<>();
+
                     for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                         Row row = sheet.getRow(i);
                         if (row == null || isEmptyRow(row)) continue;
 
-//                        Map<String, Object> rowData = new HashMap<>();
-//                        for (int j = 0; j < columnNames.size(); j++) {
-//                            Cell cell = row.getCell(j, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
-//                            Object value = getCellValue(cell);
-//                            rowData.put(columnNames.get(j), value);
-//                        }
-//
-//                        insertRow(tableName, columnNames, columnTypes, rowData);
                         Map<String, Object> rowData = new HashMap<>();
                         for (int j = 0; j < columnNames.size(); j++) {
-                            rowsImported++;
                             Cell cell = row.getCell(j, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
                             Object value = getCellValue(cell);
                             rowData.put(columnNames.get(j), value);
                         }
                         allRows.add(rowData);
+                        rowsImported++;
                     }
+
                     // Вставляем все данные одним пакетом
-                    BatchInsertService.BatchInsertResult result =
-                            batchInsertService.batchInsert(tableName, allRows);
+                    if (!allRows.isEmpty()) {
+                        BatchInsertService.BatchInsertResult result = batchInsertService.batchInsert(tableName, allRows);
+                        System.out.println("Batch insert result: " + result.getSuccessCount() + " success, " + result.getErrorCount() + " errors");
+                    }
+
                     totalRowsImported += rowsImported;
                     processedTables.add(tableName);
 
@@ -208,11 +239,15 @@ public class ExcelImportService {
                     return new ExcelImportResult(false, 0, originalFilename, "No valid sheets found");
                 }
 
+                String message = existingTable != null ?
+                        "File re-imported successfully. Tables: " + processedTables :
+                        "Import successful. Tables: " + processedTables;
+
                 return new ExcelImportResult(
                         true,
                         totalRowsImported,
                         String.join(", ", processedTables),
-                        "Import successful. Tables: " + processedTables
+                        message
                 );
             }
 
@@ -221,6 +256,44 @@ public class ExcelImportService {
         } catch (Exception e) {
             e.printStackTrace();
             return new ExcelImportResult(false, 0, "", "Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Удаление существующих данных таблицы
+     */
+    private void deleteExistingTableData(UploadedTable table) {
+        try {
+            // Получаем все листы таблицы
+            List<TableList> tableLists = tableListRepository.findByTableId(table.getId());
+
+            for (TableList tableList : tableLists) {
+                // Удаляем таблицу из БД
+                dropTableIfExists(tableList.getListName());
+            }
+
+            // Удаляем метаданные колонок
+            tableColumnRepository.deleteByTableId(table.getId());
+
+            // Удаляем метаданные листов
+            tableListRepository.deleteByTableId(table.getId());
+
+            System.out.println("Deleted old data for table: " + table.getDisplayName());
+
+        } catch (Exception e) {
+            System.err.println("Error deleting old table data: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Удаление таблицы из БД если существует
+     */
+    private void dropTableIfExists(String tableName) {
+        try {
+            jdbcTemplate.execute("DROP TABLE IF EXISTS " + tableName);
+            System.out.println("Dropped table: " + tableName);
+        } catch (Exception e) {
+            System.err.println("Error dropping table " + tableName + ": " + e.getMessage());
         }
     }
 

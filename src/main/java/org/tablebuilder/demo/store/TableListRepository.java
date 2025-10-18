@@ -10,4 +10,6 @@ public interface TableListRepository extends JpaRepository<TableList, Long> {
     List<TableList> findByTableId(Long id);
 
     TableList findByTableIdAndOriginalListName(Long id, String sheetName);
+
+    void deleteByTableId(Long id);
 }

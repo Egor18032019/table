@@ -45,7 +45,7 @@ public class TableDataCrudController {
     public ResponseEntity<Map<String, Object>> getRowById(
             @PathVariable String fileName,
             @PathVariable Long id,
-            @RequestParam(required = false) String sheetName) {
+            @RequestParam String sheetName) {
         try {
             UploadedTable table = uploadedTableRepository.findByDisplayName(fileName);
             TableList list_name = tableListRepository.findByTableIdAndOriginalListName(table.getId(), sheetName);
@@ -90,7 +90,6 @@ public class TableDataCrudController {
     }
 
 
-
     @Operation(summary = "Удалить строку")
     @DeleteMapping("/{fileName}/rows/{id}")
     public ResponseEntity<Void> deleteRow(
@@ -109,7 +108,7 @@ public class TableDataCrudController {
     @PostMapping("/{fileName}/search")
     public ResponseEntity<PageableResponse<Map<String, Object>>> searchRows(
             @PathVariable String fileName,
-            @RequestParam  String sheetName,
+            @RequestParam String sheetName,
             @RequestBody SearchRequest searchRequest,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
