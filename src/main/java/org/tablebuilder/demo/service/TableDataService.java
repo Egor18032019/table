@@ -225,7 +225,24 @@ public class TableDataService {
             throw new RuntimeException("Row not found with id: " + id);
         }
     }
+    /**
+     * Удалить строку
+     */
+    @Transactional
+    public void deleteRow(UploadedTable table, TableList list_name, Long id) {
+        // Проверяем что таблица существует
+        if (!tableExists(list_name.getListName())) {
+            throw new RuntimeException("Table not found: " + list_name.getListName());
+        }
 
+        int affectedRows = jdbcTemplate.update(
+                "DELETE FROM " + list_name.getListName() + " WHERE id = ?", id
+        );
+
+        if (affectedRows == 0) {
+            throw new RuntimeException("Row not found with id: " + id);
+        }
+    }
     /**
      * Поиск строк с фильтрацией
      */
@@ -308,13 +325,13 @@ public class TableDataService {
         UploadedTable table = resolveTableName(fileName);
         TableList list_name = tableListRepository.findByTableIdAndOriginalListName(table.getId(), sheetName);
 
-        String tableName = table.getInternalName();
+        String tableName = list_name.getListName();
 
         BatchOperationResult result = new BatchOperationResult(0, 0, new ArrayList<>());
 
         for (int i = 0; i < ids.size(); i++) {
             try {
-                deleteRow(tableName, sheetName, ids.get(i));
+                deleteRow(table, list_name, ids.get(i));
                 result.setSuccessCount(result.getSuccessCount() + 1);
             } catch (Exception e) {
                 result.setErrorCount(result.getErrorCount() + 1);
