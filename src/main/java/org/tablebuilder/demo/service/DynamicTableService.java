@@ -14,7 +14,7 @@ import org.tablebuilder.demo.utils.NameUtils;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static org.tablebuilder.demo.utils.NameUtils.sanitizeName;
+import static org.tablebuilder.demo.utils.NameUtils.*;
 
 @Service
 public class DynamicTableService {
@@ -297,7 +297,7 @@ public class DynamicTableService {
     public void ensureTableExists(TableTemplateDTO template) {
         String baseFileName = template.getTableName();
         String originalFilename = baseFileName + ".xlsx";
-        String internalTableName = sanitizeName(baseFileName);
+        String internalTableName = NameUtils.toValidSqlName(baseFileName);
 
         if (internalTableName.isEmpty()) {
             internalTableName = "table_" + System.currentTimeMillis();
@@ -308,17 +308,18 @@ public class DynamicTableService {
 
         // Обрабатываем каждый лист из template
         for (ListDTO listDTO : template.getColumns()) {
-            String sheetName = listDTO.getNameList();
-            String tableName = sanitizeName(internalTableName + "__" + sheetName);
+            String originalSheetName = listDTO.getNameList();
+            String listName = NameUtils.toValidSqlName(originalSheetName);
+            String tableName = sanitizeTableName(internalTableName + "__" + listName);
 
             if (tableName.isEmpty()) {
-                tableName = "table_" + System.currentTimeMillis() + "_" + sheetName;
+                tableName = "table_" + System.currentTimeMillis() + "_" + originalSheetName;
             }
 
             System.out.println("Creating table: " + tableName);
 
             // Сохраняем метаданные листа
-            metadataService.saveTableList(savedTable, tableName, sheetName);
+            metadataService.saveTableList(savedTable, tableName, originalSheetName);
 
             // Проверяем, существует ли таблица
             Boolean exists = jdbcTemplate.queryForObject(
@@ -348,7 +349,7 @@ public class DynamicTableService {
         validateColumnNamesColumnDefinitionDTO(listDTO.getColumns());
 
         for (ColumnDefinitionDTO col : listDTO.getColumns()) {
-            String safeColName = sanitizeName(col.getName());
+            String safeColName = sanitizeColumnName(col.getName(), listDTO.getColumns().indexOf(col));
             sql.append(", ").append(safeColName).append(" ");
 
             ColumnType type = detectColumnType(col.getType());
@@ -395,7 +396,7 @@ public class DynamicTableService {
 
         for (ColumnDefinitionDTO col : listDTO.getColumns()) {
             originalColumnNames.add(col.getName());
-            internalColumnNames.add(sanitizeName(col.getName()));
+            internalColumnNames.add(sanitizeColumnName(col.getName(), listDTO.getColumns().indexOf(col)));
         }
 
         metadataService.saveTableMetadata(

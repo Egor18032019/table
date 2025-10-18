@@ -7,6 +7,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.tablebuilder.demo.store.TableList;
+import org.tablebuilder.demo.store.TableListRepository;
+import org.tablebuilder.demo.store.UploadedTable;
+import org.tablebuilder.demo.store.UploadedTableRepository;
 
 import java.util.List;
 import java.util.Map;
@@ -16,16 +20,17 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Tag(name = "Table Data CRUD Controller", description = "CRUD операции над данными таблиц")
 public class TableDataCrudController {
-
+    private final UploadedTableRepository uploadedTableRepository;
+    private final TableListRepository tableListRepository;
     private final TableDataService tableDataService;
 
-    @Operation(summary = "Получить все данные таблицы с пагинацией")
+    @Operation(summary = "Получить все данные таблицы с пагинацией в запросе имя файла и имя листа")
     @GetMapping("/{fileName}/rows")
     public ResponseEntity<PageableResponse<Map<String, Object>>> getAllRows(
             @PathVariable String fileName,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size,
-            @RequestParam(required = false) String sheetName) {
+            @RequestParam(required = true) String sheetName) {
         try {
             PageableResponse<Map<String, Object>> result = tableDataService.getAllRows(
                     fileName, sheetName, page, size);
@@ -42,57 +47,49 @@ public class TableDataCrudController {
             @PathVariable Long id,
             @RequestParam(required = false) String sheetName) {
         try {
-            Map<String, Object> row = tableDataService.getRowById(fileName, sheetName, id);
+            UploadedTable table = uploadedTableRepository.findByDisplayName(fileName);
+            TableList list_name = tableListRepository.findByTableIdAndOriginalListName(table.getId(), sheetName);
+
+
+            Map<String, Object> row = tableDataService.getRowById(list_name.getListName(), id);
             return ResponseEntity.ok(row);
         } catch (Exception e) {
             return ResponseEntity.notFound().build();
         }
     }
 
-    @Operation(summary = "Создать новую строку")
+    @Operation(summary = "Добавить в столбец новое значение (table3.xlsx)   ")
     @PostMapping("/{fileName}/rows")
     public ResponseEntity<Map<String, Object>> createRow(
             @PathVariable String fileName,
             @RequestParam(required = false) String sheetName,
-            @RequestBody Map<String, Object> rowData) {
+            @RequestBody Map<String, Object> cell) {
         try {
-            Map<String, Object> createdRow = tableDataService.createRow(fileName, sheetName, rowData);
+            Map<String, Object> createdRow = tableDataService.createRow(fileName, sheetName, cell);
             return ResponseEntity.ok(createdRow);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
         }
     }
 
-    @Operation(summary = "Обновить строку")
+    @Operation(summary = "Обновить ячейку")
     @PutMapping("/{fileName}/rows/{id}")
     public ResponseEntity<Map<String, Object>> updateRow(
             @PathVariable String fileName,
             @PathVariable Long id,
-            @RequestParam(required = false) String sheetName,
-            @RequestBody Map<String, Object> rowData) {
+            @RequestParam String sheetName,
+            @RequestBody CellData cell) {
         try {
-            Map<String, Object> updatedRow = tableDataService.updateRow(fileName, sheetName, id, rowData);
+
+
+            Map<String, Object> updatedRow = tableDataService.updateRow(fileName, sheetName, id, cell);
             return ResponseEntity.ok(updatedRow);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
         }
     }
 
-    @Operation(summary = "Частичное обновление строки")
-    @PatchMapping("/{fileName}/rows/{id}")
-    public ResponseEntity<Map<String, Object>> partialUpdateRow(
-            @PathVariable String fileName,
-            @PathVariable Long id,
-            @RequestParam(required = false) String sheetName,
-            @RequestBody Map<String, Object> partialData) {
-        try {
-            Map<String, Object> updatedRow = tableDataService.partialUpdateRow(
-                    fileName, sheetName, id, partialData);
-            return ResponseEntity.ok(updatedRow);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
+
 
     @Operation(summary = "Удалить строку")
     @DeleteMapping("/{fileName}/rows/{id}")
@@ -108,11 +105,11 @@ public class TableDataCrudController {
         }
     }
 
-    @Operation(summary = "Поиск строк с фильтрацией")
+    @Operation(summary = "Фильтрация (equals,contains,gt,lt) и сортировка(ASC,DESC   ")
     @PostMapping("/{fileName}/search")
     public ResponseEntity<PageableResponse<Map<String, Object>>> searchRows(
             @PathVariable String fileName,
-            @RequestParam(required = false) String sheetName,
+            @RequestParam  String sheetName,
             @RequestBody SearchRequest searchRequest,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
@@ -125,20 +122,20 @@ public class TableDataCrudController {
         }
     }
 
-    @Operation(summary = "Массовое создание строк")
-    @PostMapping("/{fileName}/batch")
-    public ResponseEntity<BatchOperationResult> createBatchRows(
-            @PathVariable String fileName,
-            @RequestParam(required = false) String sheetName,
-            @RequestBody List<Map<String, Object>> rowsData) {
-        try {
-            BatchOperationResult result = tableDataService.createBatchRows(
-                    fileName, sheetName, rowsData);
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
+//    @Operation(summary = "Массовое создание строк")
+//    @PostMapping("/{fileName}/batch")
+//    public ResponseEntity<BatchOperationResult> createBatchRows(
+//            @PathVariable String fileName,
+//            @RequestParam(required = false) String sheetName,
+//            @RequestBody List<Map<String, Object>> rowsData) {
+//        try {
+//            BatchOperationResult result = tableDataService.createBatchRows(
+//                    fileName, sheetName, rowsData);
+//            return ResponseEntity.ok(result);
+//        } catch (Exception e) {
+//            return ResponseEntity.badRequest().build();
+//        }
+//    }
 
     @Operation(summary = "Массовое удаление строк")
     @DeleteMapping("/{fileName}/batch")

@@ -7,7 +7,7 @@ services:
   postgres:
     image: postgres:16.4-bookworm
     container_name: tablebuilder-db
-    command: postgres -c 'max_connections=50'
+#    command: postgres -c 'max_connections=50'
     restart: always
     ports:
       - "5432:5432"
