@@ -187,21 +187,26 @@ public class TableDataService {
         if (!tableExists(list_name.getListName())) {
             throw new RuntimeException("Table not found: " + list_name.getListName());
         }
-
+        List<TableColumn> columns = tableColumnRepository.findByTableIdAndListNameAndDisplayName(table.getId(), list_name.getListName(), cell.getColumn());
+        String internalColumnName = columns.getFirst().getInternalName();
         // Строим SQL запрос
-        String sql = buildUpdateSql(list_name.getListName(), cell.getColumn());
-
+        String sql = buildUpdateSql(list_name.getListName(), internalColumnName);
+        System.out.println("UPDATE SQL: " + sql);
+        System.out.println("Parameters: value=" + cell.getValue() + ", id=" + id);
+        // Преобразуем значение к правильному типу
+        Object value = convertValueForUpdate(cell.getValue(), internalColumnName, list_name.getListName());
         // Выполняем запрос с параметром
-        int affectedRows = jdbcTemplate.update(sql, cell.getValue(), id);
+        int affectedRows = jdbcTemplate.update(sql, value, id);
         if (affectedRows == 0) {
             throw new RuntimeException("Failed to insert row");
         }
 
-        // Получаем ID последней вставленной строки
-        Long generatedId = getLastInsertId(list_name.getListName());
+        // Возвращаем обновленную строку
+        Map<String, Object> updatedRow = getRowById(list_name.getListName(), id);
+        System.out.println("Updated row: " + updatedRow);
+        System.out.println("=== END UPDATE ROW ===");
 
-        // Возвращаем созданную строку
-        return getRowById(list_name.getListName(), generatedId);
+        return updatedRow;
     }
 
 
@@ -225,6 +230,7 @@ public class TableDataService {
             throw new RuntimeException("Row not found with id: " + id);
         }
     }
+
     /**
      * Удалить строку
      */
@@ -243,6 +249,7 @@ public class TableDataService {
             throw new RuntimeException("Row not found with id: " + id);
         }
     }
+
     /**
      * Поиск строк с фильтрацией
      */
@@ -491,6 +498,67 @@ public class TableDataService {
         } catch (Exception e) {
             System.err.println("Error getting column type: " + e.getMessage());
             return "text"; // по умолчанию
+        }
+    }
+
+    /**
+     * Преобразование значения для UPDATE
+     */
+    private Object convertValueForUpdate(Object value, String columnName, String tableName) {
+        if (value == null) {
+            return null;
+        }
+
+        try {
+            // Получаем тип колонки из БД
+            String columnType = getColumnType(tableName, columnName);
+            System.out.println("Column " + columnName + " type: " + columnType);
+
+            if (columnType != null) {
+                switch (columnType.toLowerCase()) {
+                    case "integer":
+                    case "bigint":
+                    case "smallint":
+                        if (value instanceof Number) {
+                            return ((Number) value).longValue();
+                        } else {
+                            return Long.parseLong(value.toString());
+                        }
+
+                    case "numeric":
+                    case "decimal":
+                    case "real":
+                    case "double precision":
+                        if (value instanceof Number) {
+                            return ((Number) value).doubleValue();
+                        } else {
+                            return Double.parseDouble(value.toString());
+                        }
+
+                    case "boolean":
+                    case "bool":
+                        if (value instanceof Boolean) {
+                            return value;
+                        } else {
+                            String strVal = value.toString().toLowerCase();
+                            return "true".equals(strVal) || "1".equals(strVal) || "yes".equals(strVal) || "да".equals(strVal);
+                        }
+
+                    case "date":
+                        // Обработка дат если нужно
+                        return value.toString();
+
+                    default: // text, varchar, etc.
+                        return value.toString();
+                }
+            }
+
+            // По умолчанию возвращаем как строку
+            return value.toString();
+
+        } catch (Exception e) {
+            System.err.println("Error converting value '" + value + "' for column '" + columnName + "': " + e.getMessage());
+            return value.toString(); // fallback
         }
     }
 
