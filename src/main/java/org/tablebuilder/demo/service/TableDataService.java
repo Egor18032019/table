@@ -9,7 +9,6 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.tablebuilder.demo.utils.NameUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -254,7 +253,7 @@ public class TableDataService {
      * Поиск строк с фильтрацией
      */
     public PageableResponse<Map<String, Object>> searchRows(String fileName, String sheetName,
-                                                            SearchRequest searchRequest,
+                                                            SearchRequestForApi searchRequestForApi,
                                                             int page, int size) {
 
         UploadedTable table = resolveTableName(fileName);
@@ -267,15 +266,15 @@ public class TableDataService {
         MapSqlParameterSource params = new MapSqlParameterSource();
 
         // Добавляем WHERE если есть фильтры
-        if (searchRequest.getFilters() != null && !searchRequest.getFilters().isEmpty()) {
+        if (searchRequestForApi.getFilters() != null && !searchRequestForApi.getFilters().isEmpty()) {
             sql.append(" WHERE ");
-            buildFilterClause(sql, params, searchRequest.getFilters(), tableName);
+            buildFilterClause(sql, params, searchRequestForApi.getFilters(), tableName);
         }
 
         // Добавляем ORDER BY если есть сортировка
-        if (searchRequest.getSorts() != null && !searchRequest.getSorts().isEmpty()) {
+        if (searchRequestForApi.getSorts() != null && !searchRequestForApi.getSorts().isEmpty()) {
             sql.append(" ORDER BY ");
-            buildSortClause(sql, searchRequest.getSorts(), tableName);
+            buildSortClause(sql, searchRequestForApi.getSorts(), tableName);
         }
 
         // Добавляем пагинацию
@@ -289,7 +288,7 @@ public class TableDataService {
         );
 
         // Получаем общее количество с учетом фильтров
-        long totalCount = getFilteredCount(tableName, searchRequest.getFilters());
+        long totalCount = getFilteredCount(tableName, searchRequestForApi.getFilters());
 
         List<Map<String, Object>> typedRows = convertRowTypes(rows);
         return createPageableResponse(typedRows, page, size, totalCount);

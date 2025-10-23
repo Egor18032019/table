@@ -1,6 +1,10 @@
 package org.tablebuilder.demo.service;
 
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.tablebuilder.demo.model.ExcelImportResult;
 import org.tablebuilder.demo.store.*;
 import org.tablebuilder.demo.utils.ColumnType;
@@ -15,7 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
-
+@Slf4j
 @Service
 public class ExcelImportService {
 
@@ -34,6 +38,10 @@ public class ExcelImportService {
     private JdbcTemplate jdbcTemplate;
     @Autowired
     private BatchInsertService batchInsertService;
+    @Autowired
+    private EmbeddingModel embeddingModel;
+    @Autowired
+    private VectorStore vectorStore;
 
     @Transactional
     public ExcelImportResult importExcel(MultipartFile file, String username) {
@@ -68,7 +76,7 @@ public class ExcelImportService {
                 savedTable = uploadedTableRepository.save(existingTable);
             } else {
                 // Создаем новую таблицу
-                savedTable = metadataService.saveUploadedTable(originalFilename, internalTableName, username);
+                savedTable =    metadataService.saveUploadedTable(originalFilename, internalTableName, username);
             }
 
             try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
@@ -483,5 +491,58 @@ public class ExcelImportService {
 
         // Если не удалось распарсить, возвращаем null
         return null;
+    }
+
+    /**
+     * Индексирует содержимое листа в VectorStore.
+     * Создает документы, представляющие строки данных, и сохраняет их.
+     */
+    private void indexSheetContent(UploadedTable uploadedTable, String sheetName, List<Map<String, Object>> rows, List<String> columnNames) {
+        if (rows.isEmpty() || columnNames.isEmpty()) {
+            return;
+        }
+
+        List<Document> documentsToIndex = new ArrayList<>();
+
+        for (int i = 0; i < rows.size(); i++) {
+            Map<String, Object> row = rows.get(i);
+            // Создаем текстовое представление строки
+            StringBuilder contentBuilder = new StringBuilder();
+            contentBuilder.append("Файл: ").append(uploadedTable.getDisplayName()).append(", ");
+            contentBuilder.append("Лист: ").append(sheetName).append(", ");
+            contentBuilder.append("Строка: ").append(i + 1).append(". ");
+            contentBuilder.append("Данные: ");
+
+            for (int j = 0; j < columnNames.size(); j++) {
+                String colName = columnNames.get(j);
+                Object value = row.get(colName);
+                if (value != null) {
+                    contentBuilder.append(colName).append(": ").append(value.toString()).append("; ");
+                }
+            }
+
+            String content = contentBuilder.toString().trim();
+
+            // Метаданные документа
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("file_name", uploadedTable.getDisplayName());
+            metadata.put("table_name", uploadedTable.getDisplayName()); // Используем имя таблицы в БД
+            metadata.put("sheet_name", sheetName);
+            metadata.put("row_index", i);
+            // типы данных колонок ?
+
+            Document document = new Document(content, metadata);
+            documentsToIndex.add(document);
+        }
+
+        try {
+            // Сохраняем документы в векторное хранилище
+            vectorStore.add(documentsToIndex);
+            log.info("Indexed {} rows from sheet '{}' of file '{}' into VectorStore.", rows.size(), sheetName, uploadedTable.getDisplayName());
+        } catch (Exception e) {
+            log.error("Failed to index content for sheet '{}' of file '{}' into VectorStore: {}", sheetName, uploadedTable.getDisplayName(), e.getMessage(), e);
+            // или
+            // throw new RuntimeException("Indexing failed", e);
+        }
     }
 }

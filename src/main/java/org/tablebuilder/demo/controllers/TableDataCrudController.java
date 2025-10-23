@@ -132,7 +132,7 @@ public class TableDataCrudController {
     public ResponseEntity<PageableResponse<Map<String, Object>>> searchRows(
             @PathVariable String fileName,
             @RequestParam String sheetName,
-            @RequestBody SearchRequest searchRequest,
+            @RequestBody SearchRequestForApi searchRequestForApi,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
         try {
@@ -141,7 +141,7 @@ public class TableDataCrudController {
                     ? URLDecoder.decode(sheetName, StandardCharsets.UTF_8)
                     : null;
             PageableResponse<Map<String, Object>> result = tableDataService.searchRows(
-                    decodedFileName, decodedSheetName, searchRequest, page, size);
+                    decodedFileName, decodedSheetName, searchRequestForApi, page, size);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();

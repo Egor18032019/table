@@ -1,4 +1,3 @@
-version: "3.9"
 
 services:
   # --------------- Infrastructure Services ---------------
@@ -7,7 +6,7 @@ services:
   postgres:
     image: postgres:16.4-bookworm
     container_name: tablebuilder-db
-#    command: postgres -c 'max_connections=50'
+    #    command: postgres -c 'max_connections=50'
     restart: always
     ports:
       - "5432:5432"
@@ -17,7 +16,7 @@ services:
       - POSTGRES_PASSWORD=postgres
       - PGDATA=/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tableowner -d tablebuilder"]
+      test: [ "CMD-SHELL", "pg_isready -U tableowner -d tablebuilder" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,29 +24,58 @@ services:
       - tablebuilder_db_data:/var/lib/postgresql/data
     networks:
       - tablebuilder_infrastructure_network
-
-  # ----------------- Backend Services --------------------
-
-  # tablebuilder service
-  backend:
-    image: tablebuilder:0.0.1
-    container_name: tablebuilder-spring
-    build:
-      context: .
-      dockerfile: Dockerfile
-    restart: always
+  # Ollama для локальных AI моделей с авто-загрузкой
+  ollama:
+    image: ollama/ollama:latest
+    container_name: tablebuilder-ollama
     ports:
-      - "8080:8080"
-    environment:
-      - SERVER_PORT=8080
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/tablebuilder?reWriteBatchedInserts=true&useUnicode=true&characterEncoding=UTF-8
-      - SPRING_DATASOURCE_USERNAME=tableowner
-      - SPRING_DATASOURCE_PASSWORD=postgres
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
     networks:
       - tablebuilder_infrastructure_network
+    entrypoint: >
+      /bin/sh -c "
+        echo 'Starting Ollama server...' &&
+        ollama serve &
+        sleep 5 &&
+        echo 'Pulling Gemma3 model...' &&
+        ollama pull gemma3:4b-it-q4_K_M &&
+        echo 'Pulling embedding model...' &&
+        ollama pull nomic-embed-text &&
+        echo 'All models pulled successfully!' &&
+        wait
+      "
+    restart: unless-stopped
+    # Увеличиваем таймауты для загрузки больших моделей
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:11434/api/tags" ]
+      interval: 30s
+      timeout: 60s
+      retries: 10
+      start_period: 120s
+#  # ----------------- Backend Services --------------------
+#
+#  # tablebuilder service
+#  backend:
+#    image: tablebuilder:0.0.1
+#    container_name: tablebuilder-spring
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    restart: always
+#    ports:
+#      - "8080:8080"
+#    environment:
+#      - SERVER_PORT=8080
+#      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/tablebuilder?reWriteBatchedInserts=true&useUnicode=true&characterEncoding=UTF-8
+#      - SPRING_DATASOURCE_USERNAME=tableowner
+#      - SPRING_DATASOURCE_PASSWORD=postgres
+#    depends_on:
+#      postgres:
+#        condition: service_healthy
+#    networks:
+#      - tablebuilder_infrastructure_network
 
 # --------------- Networks ---------------
 networks:
@@ -56,4 +84,5 @@ networks:
 
 # --------------- Volumes ---------------
 volumes:
-  tablebuilder_db_data: {}
+  tablebuilder_db_data: { }
+  ollama_data: {}

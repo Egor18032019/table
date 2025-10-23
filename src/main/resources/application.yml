@@ -1,10 +1,16 @@
 server:
+  tomcat:
+    uri-encoding: UTF-8
   port: 8080
   servlet:
     encoding:
       charset: UTF-8
+      enabled: true
       force: true
-
+app:
+  chat:
+    memory:
+      max-messages: 12 # Укажите желаемое количество сообщений
 spring:
   servlet:
     multipart:
@@ -21,7 +27,17 @@ spring:
     hikari:
       driver-class-name: org.postgresql.Driver
       maximum-pool-size: 50
-
+  ai:
+    ollama:
+      base-url: ${SPRING_AI_OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        options:
+          model: ${SPRING_AI_OLLAMA_CHAT_MODEL:gemma3:4b-it-q4_K_M}
+          temperature: 0.1
+          top-p: 0.9
+      embedding:
+        options:
+          model: ${SPRING_AI_OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
   jpa:
     show-sql: true
     generate-ddl: true

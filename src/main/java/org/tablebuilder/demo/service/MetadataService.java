@@ -85,7 +85,7 @@ public class MetadataService {
 
     }
 
-    public void saveTableList(UploadedTable savedTable, String tableName,String originalListName) {
+    public void saveTableList(UploadedTable savedTable, String tableName, String originalListName) {
         TableList tableList = new TableList();
         tableList.setListName(tableName);
         tableList.setTable(savedTable);
@@ -110,6 +110,7 @@ public class MetadataService {
             throw new RuntimeException("Failed to get files list", e);
         }
     }
+
     /**
      * Конвертация UploadedTable в FileInfo
      */
@@ -155,6 +156,7 @@ public class MetadataService {
             );
         }
     }
+
     /**
      * Получить список колонок листа
      */
@@ -212,6 +214,7 @@ public class MetadataService {
             throw new RuntimeException("Failed to get sheets", e);
         }
     }
+
     /**
      * Конвертация TableList в SheetInfo
      */
@@ -280,5 +283,11 @@ public class MetadataService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to get sheet info", e);
         }
+    }
+
+    public FileInfo getFileInfoByDisplayName(String fileName) {
+
+        UploadedTable table = uploadedTableRepository.findByDisplayName(fileName);
+        return convertToFileInfo(table);
     }
 }
